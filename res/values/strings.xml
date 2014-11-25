@@ -4,5 +4,8 @@
     <string name="app_name">TestNaviApp</string>
     <string name="hello_world">Hello world!</string>
     <string name="action_settings">Settings</string>
+    
+    <string name="activity_label_main">Main</string>
+    <string name="activity_label_debug">Debug</string>
 
 </resources>

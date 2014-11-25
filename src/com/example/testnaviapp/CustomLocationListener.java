@@ -11,11 +11,11 @@ import android.location.LocationListener;
 import android.os.Bundle;
 import android.util.Log;
 
-public class MyLocationListener implements LocationListener, Listener {
+public class CustomLocationListener implements LocationListener, Listener {
 
-    private static final String TAG = MyLocationListener.class.getName();
+    private static final String TAG = CustomLocationListener.class.getName();
 
-    public final static String CHANGE_LOCATION = "change_location";
+    public final static String EVENT_CHANGE_LOCATION = "event_change_location";
     public final static String KEY_LOCATION = "key_location";
     private double MAX_ACCURACY = 35;
     private Location prevLocation = null;
@@ -23,7 +23,7 @@ public class MyLocationListener implements LocationListener, Listener {
     private boolean gpsFix = false;
     private Context context;
 
-    public MyLocationListener(Context context) {
+    public CustomLocationListener(Context context) {
         this.context = context;
     }
 
@@ -43,7 +43,7 @@ public class MyLocationListener implements LocationListener, Listener {
     }
 
     private void sendChangeLocation(Location location) {
-        Intent intent = new Intent(CHANGE_LOCATION);
+        Intent intent = new Intent(EVENT_CHANGE_LOCATION);
         intent.putExtra(KEY_LOCATION, new LatLng(location.getLatitude(), location.getLongitude()));
         context.sendBroadcast(intent);
     }

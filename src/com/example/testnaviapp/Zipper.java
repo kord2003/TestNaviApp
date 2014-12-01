@@ -5,13 +5,17 @@ import android.os.Environment;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 public class Zipper {
 
     private final static String FILE_EXT = ".zip";
+
+    private static final String TAG = Zipper.class.getName();
 
     @SuppressWarnings("deprecation")
     public static File zipFile(Context context, File file) {
@@ -22,15 +26,17 @@ public class Zipper {
             if (lastIndex != -1) {
                 zipFileName = zipFileName.substring(0, lastIndex);
             }
-            zipFileName += FILE_EXT;
+            zipFileName = Environment.getExternalStorageDirectory() + "/"  + zipFileName + FILE_EXT;
+
+            //Log.d(TAG, "zipFileName: " +  zipFileName);
 
             // write to zip
-            ZipOutputStream zipWriter = new ZipOutputStream(context.openFileOutput(zipFileName,
-                    Context.MODE_WORLD_READABLE));
+            OutputStream os = new FileOutputStream(zipFileName);
+            ZipOutputStream zipWriter = new ZipOutputStream(os);
             zip(file, zipWriter);
             zipWriter.close();
 
-            return new File(Environment.getExternalStorageDirectory() + "/" + zipFileName);
+            return new File(zipFileName);
         } catch (IOException ex) {
             ex.printStackTrace();
             return null;

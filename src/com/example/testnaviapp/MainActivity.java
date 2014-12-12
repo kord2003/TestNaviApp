@@ -12,12 +12,15 @@ import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.location.Location;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+
+import java.util.Date;
 
 public class MainActivity extends Activity {
     private static final String TAG = MainActivity.class.getName();
@@ -28,7 +31,7 @@ public class MainActivity extends Activity {
 
     private LocationManager locationManager;
 
-    private volatile MyLocationListener locationListener;
+    private volatile CustomLocationListener locationListener;
 
     private GoogleMap map;
 
@@ -39,8 +42,9 @@ public class MainActivity extends Activity {
     public class LocationBroadcastReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
-            Location location = intent.getParcelableExtra(MyLocationListener.KEY_LOCATION);
-            Log.d(TAG, "new location = " + location);
+            Location newLocation = intent.getParcelableExtra(CustomLocationListener.KEY_LOCATION);
+            FileLogger.appendLog(MainActivity.this, "newLocation = " + newLocation);
+            changeCurrentPositionMarker(new LatLng(newLocation.getLatitude(), newLocation.getLongitude()));
         }
     }
 
@@ -55,15 +59,6 @@ public class MainActivity extends Activity {
 
         if (locationManager == null) {
             locationManager = (LocationManager)getSystemService(Context.LOCATION_SERVICE);
-        }
-
-        if (locationListener == null) {
-            locationListener = new MyLocationListener(this);
-            locationManager.removeGpsStatusListener(locationListener);
-            locationManager.addGpsStatusListener(locationListener);
-            locationManager.removeUpdates(locationListener);
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, (long)60 * 1000,
-                    1, locationListener);
         }
     }
 
@@ -81,9 +76,15 @@ public class MainActivity extends Activity {
         // as you specify a parent activity in AndroidManifest.xml.
         int id = item.getItemId();
         if (id == R.id.action_settings) {
+            startSettings();
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    private void startSettings() {
+        Intent intent = new Intent(this, DebugActivity.class);
+        startActivity(intent);
     }
 
     @Override
@@ -91,6 +92,45 @@ public class MainActivity extends Activity {
         super.onResume();
         initMap();
         initMarkers();
+        registerReceiver();
+        bindGpsListeners();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        unregisterReceiver();
+        unbindGpsListeners();
+    }
+
+    private void registerReceiver() {
+        if (locationBroadcastReceiver == null) {
+            locationBroadcastReceiver = new LocationBroadcastReceiver();
+        }
+        registerReceiver(locationBroadcastReceiver, new IntentFilter(
+                CustomLocationListener.EVENT_CHANGE_LOCATION));
+    }
+
+    private void unregisterReceiver() {
+        unregisterReceiver(locationBroadcastReceiver);
+    }
+
+    private void bindGpsListeners() {
+        if (locationListener == null) {
+            locationListener = new CustomLocationListener(this);
+            locationManager.removeGpsStatusListener(locationListener);
+            locationManager.addGpsStatusListener(locationListener);
+            locationManager.removeUpdates(locationListener);
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, (long)60 * 1000,
+                    100, locationListener);
+        }
+    }
+
+    private void unbindGpsListeners() {
+        if (locationListener != null) {
+            locationManager.removeGpsStatusListener(locationListener);
+            locationManager.removeUpdates(locationListener);
+        }
     }
 
     private void initMarkers() {
@@ -98,27 +138,30 @@ public class MainActivity extends Activity {
             Marker hamburg = map.addMarker(new MarkerOptions().position(HAMBURG).title("Hamburg"));
             Marker kiel = map.addMarker(new MarkerOptions().position(KIEL).title("Kiel"));
 
-            Location lastLocation = null;
+            Location initialLocation = null;
             try {
-                lastLocation = getLastGeoLocation(this);
+                initialLocation = getLastGeoLocation(this);
             } catch (Exception e) {
                 e.printStackTrace();
             }
 
-            if(lastLocation != null) {
-                LatLng currentLatLng = new LatLng(lastLocation.getLatitude(), lastLocation.getLongitude());
-                changeCurrentPositionMarker(currentLatLng);
+            if (initialLocation != null) {
+                FileLogger.appendLog(MainActivity.this, "initialLocation = " + initialLocation);
 
+                LatLng currentLatLng = new LatLng(initialLocation.getLatitude(),
+                        initialLocation.getLongitude());
+                changeCurrentPositionMarker(currentLatLng);
             }
         }
     }
 
     private void changeCurrentPositionMarker(LatLng currentLatLng) {
-        if(currentLocationMarker == null) {
+        if (currentLocationMarker == null) {
             currentLocationMarker = map.addMarker(new MarkerOptions().title("MyLocation")
                     .snippet("I'm cool").anchor(0.5f, 0.5f).position(currentLatLng)
                     .icon(BitmapDescriptorFactory.fromResource(R.drawable.ic_launcher)));
         } else {
+            Log.d(TAG, "changeCurrentPositionMarker: " + currentLatLng);
             currentLocationMarker.setPosition(currentLatLng);
         }
     }
@@ -129,16 +172,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    @Override
-    protected void onPause() {
-        super.onPause();
-
-    }
-
-    /**
-     * A placeholder fragment containing a simple view.
-     */
-
     public Location getLastGeoLocation(Context context) {
         LocationManager locationManager = (LocationManager)context
                 .getSystemService(Context.LOCATION_SERVICE);
@@ -146,21 +179,37 @@ public class MainActivity extends Activity {
         String locationProviderNetwork = LocationManager.NETWORK_PROVIDER;
         String locationProviderGPS = LocationManager.GPS_PROVIDER;
 
-        Location lastKnownLocationNetwork = locationManager
-                .getLastKnownLocation(locationProviderNetwork);
-        Location lastKnownLocationGPS = locationManager.getLastKnownLocation(locationProviderGPS);
+        Location networkLocation = locationManager.getLastKnownLocation(locationProviderNetwork);
+        Location gpsLocation = locationManager.getLastKnownLocation(locationProviderGPS);
 
-        if (lastKnownLocationNetwork != null) {
-            //if(BuildConfig.DEBUG) Log.d(TAG, "lastKnownLocationNetwork: lat = " + lastKnownLocationNetwork.getLatitude() + ", lon = " + lastKnownLocationNetwork.getLongitude() + ", acc = " + lastKnownLocationNetwork.getAccuracy());
+        if (networkLocation != null) {
+            String networkLocationDate = DateFormatter.fullDateForFile(new Date(networkLocation
+                    .getTime()));
+            if (BuildConfig.DEBUG)
+                Log.d(TAG, "networkLocation: lat = " + networkLocation.getLatitude() + ", lon = "
+                        + networkLocation.getLongitude() + ", acc = "
+                        + networkLocation.getAccuracy() + ", date = " + networkLocationDate);
         }
-        if (lastKnownLocationGPS != null) {
-            //if(BuildConfig.DEBUG) Log.d(TAG, "lastKnownLocationGPS: lat = " + lastKnownLocationGPS.getLatitude() + ", lon = " + lastKnownLocationGPS.getLongitude() + ", acc = " + lastKnownLocationGPS.getAccuracy());
+        if (gpsLocation != null) {
+            String gpsLocationDate = DateFormatter.fullDateForFile(new Date(gpsLocation.getTime()));
+            if (BuildConfig.DEBUG)
+                Log.d(TAG, "gpsLocation: lat = " + gpsLocation.getLatitude() + ", lon = "
+                        + gpsLocation.getLongitude() + ", acc = " + gpsLocation.getAccuracy()
+                        + ", date = " + gpsLocationDate);
         }
 
-        if (lastKnownLocationGPS != null) {
-            return lastKnownLocationGPS;
-        } else if (lastKnownLocationNetwork != null) {
-            return lastKnownLocationNetwork;
+        if (gpsLocation != null && networkLocation != null) {
+            Date networkLocationDate = new Date(networkLocation.getTime());
+            Date gpsLocationDate =new Date(gpsLocation.getTime());
+            if(networkLocationDate.after(gpsLocationDate)) {
+                return networkLocation;
+            } else {
+                return gpsLocation;
+            }
+        } if (gpsLocation != null) {
+            return gpsLocation;
+        } else if (networkLocation != null) {
+            return networkLocation;
         } else {
             return null;
         }
